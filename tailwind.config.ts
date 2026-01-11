@@ -14,10 +14,24 @@ const config: Config = {
       colors: {
         background: 'var(--background)',
         foreground: 'var(--foreground)',
-        primary: '#697565',
-        secondary: '#ECDFCC',
-        'dark-black': '#181C14',
-        'dark-gray': '#3C3D37',
+        primary: {
+          light: '#1E3A8A',
+          dark: '#3B82F6',
+          DEFAULT: '#1E3A8A',
+        },
+        secondary: {
+          light: '#10B981',
+          dark: '#34D399',
+          DEFAULT: '#10B981',
+        },
+        tertiary: {
+          light: '#F1F5F9',
+          dark: '#111827',
+          DEFAULT: '#F1F5F9',
+        },
+      },
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
       },
     },
   },
