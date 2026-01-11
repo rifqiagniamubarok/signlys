@@ -26,10 +26,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <NextThemesProvider attribute="class" defaultTheme="dark">
-        <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>{children}</body>
-      </NextThemesProvider>
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`} suppressHydrationWarning>
+        <NextThemesProvider attribute="class" defaultTheme="dark">
+          {children}
+        </NextThemesProvider>
+      </body>
     </html>
   );
 }

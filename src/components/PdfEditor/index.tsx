@@ -3,9 +3,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
+import 'react-pdf/dist/esm/Page/TextLayer.css';
 import { PDFDocument } from 'pdf-lib';
 import { saveAs } from 'file-saver';
-import { Button, Card, Divider, Spinner, useDisclosure } from '@nextui-org/react';
+import { Button, Card, Divider, Spinner, useDisclosure, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter } from '@nextui-org/react';
 import DraggableSignature from './DraggableSignature';
 import SidebarEditor from './SidebarEditor';
 import { DndProvider } from 'react-dnd';
@@ -13,7 +14,7 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import { useDrop } from 'react-dnd';
 import SignModal from './SignModal';
 import DropFile from './DropFile';
-import { ArrowBigLeft, ArrowLeft, FileX } from 'lucide-react';
+import { ArrowBigLeft, ArrowLeft, ChevronLeft, ChevronRight, Download, FileX, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import ButtonNigtmode from '../partial/ButtonNigtmode';
 import dayjs from 'dayjs';
@@ -42,7 +43,6 @@ interface DropAreaProps {
 }
 
 const DropArea: React.FC<DropAreaProps> = ({ children, onDrop }) => {
-  const ref = useRef<HTMLDivElement>(null);
   const [{ canDrop, isOver }, drop] = useDrop({
     accept: ItemTypes.SIGNATURE,
     drop: (item: { index: number }, monitor) => {
@@ -57,13 +57,11 @@ const DropArea: React.FC<DropAreaProps> = ({ children, onDrop }) => {
     }),
   });
 
-  drop(ref);
-
   const isActive = canDrop && isOver;
 
   return (
     <div
-      ref={ref}
+      ref={drop as unknown as React.Ref<HTMLDivElement>}
       style={{
         width: '100%',
         position: 'relative',
@@ -77,6 +75,7 @@ const DropArea: React.FC<DropAreaProps> = ({ children, onDrop }) => {
 
 const PdfEditor: React.FC = () => {
   const { isOpen: isOpenSE, onOpen: onOpenSE, onOpenChange: onOpenChangeSE, onClose: onCloseSE } = useDisclosure();
+  const { isOpen: isOpenMobileEdit, onOpen: onOpenMobileEdit, onOpenChange: onOpenChangeMobileEdit, onClose: onCloseMobileEdit } = useDisclosure();
   const [signatureImages, setSignatureImages] = useState<Signature[]>([]);
   const [signatureImageSelect, setSignatureImageSelect] = useState<Signature | null>(null);
   const [numPages, setNumPages] = useState<number | null>(null);
@@ -85,6 +84,16 @@ const PdfEditor: React.FC = () => {
   const [pdfData, setPdfData] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isMobile, setIsMobile] = useState<boolean>(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 1024);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   useEffect(() => {
     if (file) {
@@ -160,7 +169,20 @@ const PdfEditor: React.FC = () => {
 
       for (const signature of signatureImages) {
         const imageBytes = await fetch(signature.src).then((res) => res.arrayBuffer());
-        const image = await pdfDoc.embedPng(imageBytes);
+
+        // Detect image type from the data URL
+        const isPng = signature.src.startsWith('data:image/png');
+        const isJpeg = signature.src.startsWith('data:image/jpeg') || signature.src.startsWith('data:image/jpg');
+
+        let image;
+        if (isPng) {
+          image = await pdfDoc.embedPng(imageBytes);
+        } else if (isJpeg) {
+          image = await pdfDoc.embedJpg(imageBytes);
+        } else {
+          // Default to PNG for canvas-drawn signatures
+          image = await pdfDoc.embedPng(imageBytes);
+        }
 
         const pages = pdfDoc.getPages();
         const page = pages[signature.page - 1];
@@ -175,7 +197,7 @@ const PdfEditor: React.FC = () => {
       }
 
       const modifiedPdfBytes = await pdfDoc.save();
-      const blob = new Blob([modifiedPdfBytes], { type: 'application/pdf' });
+      const blob = new Blob([new Uint8Array(modifiedPdfBytes)], { type: 'application/pdf' });
       const originalFileName = file.name.replace(/\.pdf$/, '');
       const editedFileName = `${originalFileName}-${dayjs(new Date()).format('YYYYMMDDHHmmss')}.pdf`;
       saveAs(blob, editedFileName);
@@ -230,6 +252,52 @@ const PdfEditor: React.FC = () => {
     setSignatureImages([]);
   };
 
+  const handleSignatureClick = (signature: Signature, e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    setSignatureImageSelect(signature);
+    if (isMobile) {
+      onOpenMobileEdit();
+    }
+  };
+
+  const moveSignature = (direction: 'up' | 'down' | 'left' | 'right') => {
+    if (!signatureImageSelect) return;
+    const step = 5;
+    setSignatureImages(
+      signatureImages.map((sig) => {
+        if (sig.id === signatureImageSelect.id) {
+          const updated = { ...sig };
+          if (direction === 'up') updated.y -= step;
+          if (direction === 'down') updated.y += step;
+          if (direction === 'left') updated.x -= step;
+          if (direction === 'right') updated.x += step;
+          setSignatureImageSelect(updated);
+          return updated;
+        }
+        return sig;
+      })
+    );
+  };
+
+  const resizeSignature = (action: 'increase' | 'decrease') => {
+    if (!signatureImageSelect) return;
+    const factor = action === 'increase' ? 1.1 : 0.9;
+    setSignatureImages(
+      signatureImages.map((sig) => {
+        if (sig.id === signatureImageSelect.id) {
+          const updated = {
+            ...sig,
+            width: sig.width * factor,
+            height: sig.height * factor,
+          };
+          setSignatureImageSelect(updated);
+          return updated;
+        }
+        return sig;
+      })
+    );
+  };
+
   const sizeSignature = [
     {
       name: 'sm',
@@ -254,12 +322,12 @@ const PdfEditor: React.FC = () => {
   ];
 
   return (
-    <div className="w-screen h-screen  bg-slate-200">
+    <div className="w-screen h-screen bg-gray-100 dark:bg-dark-black flex flex-col lg:bg-slate-200">
       {!file && !isLoading && (
         <div className="h-screen w-screen flex justify-center items-center bg-primary">
-          <div className="flex flex-col items-center gap-4">
+          <div className="flex flex-col items-center gap-4 px-4">
             <DropFile onDrop={handleFileChange} />
-            <Button as={Link} href="/" variant="light" className="text-white">
+            <Button as={Link} href="/" variant="light" className="text-white" size={isMobile ? 'sm' : 'md'}>
               <ArrowLeft />
               Back
             </Button>
@@ -268,118 +336,298 @@ const PdfEditor: React.FC = () => {
       )}
       {isLoading && (
         <div className="fixed inset-0 z-50 w-screen h-screen flex justify-center items-center bg-white dark:bg-dark-gray">
-          <Spinner color="primary" />
+          <Spinner color="primary" size="lg" />
         </div>
       )}
       <SignModal isOpen={isOpenSE} onOpenChange={onOpenChangeSE} onClose={onCloseSE} onSave={handleSaveSignature} />
+
       {file && (
-        <div className="flex">
-          <div className="grow">
-            <div className="h-screen overflow-y-auto">
-              <div className="sticky top-0 z-50 p-4 bg-white dark:bg-dark-gray">
-                <div className="flex   w-full justify-between">
-                  <div className="space-x-2">
-                    <Button onClick={onOpenSE} className="" isDisabled={!file} color="primary">
-                      Add Signature
-                    </Button>
-                    <Button onClick={addSignaturesToPdf} className="" isDisabled={!file} color="primary" variant="solid">
-                      Save
-                    </Button>
-                  </div>
-                  <div className="space-x-2">
-                    <Button color="danger" isIconOnly variant="faded" onClick={handleDeleteFile}>
-                      <FileX />
+        <>
+          {/* Mobile/Tablet View */}
+          {isMobile ? (
+            <div className="flex flex-col h-screen">
+              {/* Header */}
+              <div className="sticky top-0 z-50 bg-white dark:bg-dark-gray shadow-sm">
+                <div className="flex justify-between items-center p-3">
+                  <Button as={Link} href="/" size="sm" variant="light" isIconOnly>
+                    <ArrowLeft size={20} />
+                  </Button>
+                  <h1 className="text-base font-semibold text-black dark:text-white">PDF Editor</h1>
+                  <div className="flex gap-2">
+                    <Button size="sm" color="danger" variant="light" isIconOnly onClick={handleDeleteFile}>
+                      <FileX size={20} />
                     </Button>
                     <ButtonNigtmode />
                   </div>
                 </div>
               </div>
-              <div className="dark:bg-dark-black bg-gray-200 text-white px-2 pt-2 pb-4 space-y-2">
-                <div className="w-full flex items-center justify-between">
-                  <div>
-                    <Button onClick={goToPrevPage} isDisabled={pageNumber <= 1 || !file} color="primary" size="sm">
-                      Prev
-                    </Button>
-                  </div>
-                  <div className="text-primary">
-                    {pageNumber} / {numPages}
-                  </div>
-                  <div>
-                    <Button onClick={goToNextPage} isDisabled={pageNumber >= (numPages || 0) || !file} color="primary" size="sm">
-                      Next
-                    </Button>
-                  </div>
-                </div>
-                <div className="w-full flex justify-center ">
-                  <div className="min-h-screen w-fit drop-area">
-                    <DndProvider backend={HTML5Backend}>
-                      <DropArea onDrop={handleDrop}>
-                        {file && (
-                          <div className="relative w-full h-full">
-                            {error ? (
-                              <div className="text-red-500">{`Error loading PDF: ${error}`}</div>
-                            ) : (
-                              <Document file={pdfData} onLoadSuccess={onDocumentLoadSuccess} onLoadError={onDocumentLoadError}>
-                                <Page pageNumber={pageNumber} />
-                              </Document>
-                            )}
-                            {signatureImages.map((signature, index) => {
-                              if (signature.page !== pageNumber) return null;
-                              return (
-                                <DraggableSignature
-                                  key={index}
-                                  isSelected={signatureImageSelect?.id == signature?.id}
-                                  src={signature.src}
-                                  position={{ x: signature.x, y: signature.y }}
-                                  index={index}
-                                  onDrop={handleDrop}
-                                  onClick={() => setSignatureImageSelect(signature)}
-                                  width={signature.width}
-                                  height={signature.height}
-                                />
-                              );
-                            })}
-                          </div>
-                        )}
-                      </DropArea>
-                    </DndProvider>
-                  </div>
-                </div>
-                <div className="w-full flex items-center justify-between">
-                  <div>
-                    <Button onClick={goToPrevPage} isDisabled={pageNumber <= 1 || !file} color="primary" size="sm">
-                      Prev
-                    </Button>
-                  </div>
-                  <div className="text-primary">
-                    {pageNumber} / {numPages}
-                  </div>
-                  <div>
-                    <Button onClick={goToNextPage} isDisabled={pageNumber >= (numPages || 0) || !file} color="primary" size="sm">
-                      Next
-                    </Button>
+
+              {/* PDF Viewer */}
+              <div className="flex-1 overflow-auto bg-gray-200 dark:bg-dark-black">
+                <div className="p-2">
+                  <div className="relative bg-white rounded-lg shadow-lg overflow-hidden">
+                    {error ? (
+                      <div className="p-4 text-red-500 text-center">{`Error: ${error}`}</div>
+                    ) : (
+                      <Document file={pdfData} onLoadSuccess={onDocumentLoadSuccess} onLoadError={onDocumentLoadError}>
+                        <Page pageNumber={pageNumber} width={window.innerWidth - 32} />
+                      </Document>
+                    )}
+
+                    {/* Signatures overlay */}
+                    {signatureImages
+                      .filter((sig) => sig.page === pageNumber)
+                      .map((signature) => (
+                        <div
+                          key={signature.id}
+                          onClick={(e) => handleSignatureClick(signature, e)}
+                          style={{
+                            position: 'absolute',
+                            left: signature.x,
+                            top: signature.y,
+                            width: signature.width,
+                            height: signature.height,
+                            cursor: 'pointer',
+                            border: signatureImageSelect?.id === signature.id ? '2px solid #0070f0' : '1px dashed #999',
+                            borderRadius: '4px',
+                            backgroundColor: signatureImageSelect?.id === signature.id ? 'rgba(0, 112, 240, 0.1)' : 'transparent',
+                          }}
+                        >
+                          <img
+                            src={signature.src}
+                            alt={signature.name}
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'contain',
+                              pointerEvents: 'none',
+                            }}
+                          />
+                        </div>
+                      ))}
                   </div>
                 </div>
               </div>
+
+              {/* Bottom Controls */}
+              <div className="bg-white dark:bg-dark-gray border-t border-gray-200 dark:border-gray-700 p-3 space-y-3">
+                {/* Page Navigation */}
+                <div className="flex justify-between items-center">
+                  <Button size="sm" onClick={goToPrevPage} isDisabled={pageNumber <= 1} color="primary" variant="flat">
+                    <ChevronLeft size={18} />
+                    Prev
+                  </Button>
+                  <span className="text-sm font-medium text-black dark:text-white">
+                    {pageNumber} / {numPages}
+                  </span>
+                  <Button size="sm" onClick={goToNextPage} isDisabled={pageNumber >= (numPages || 0)} color="primary" variant="flat">
+                    Next
+                    <ChevronRight size={18} />
+                  </Button>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-2">
+                  <Button size="md" onClick={onOpenSE} color="primary" variant="solid" className="flex-1">
+                    <Plus size={18} />
+                    Add
+                  </Button>
+                  <Button size="md" onClick={addSignaturesToPdf} color="success" variant="solid" className="flex-1" isDisabled={signatureImages.length === 0}>
+                    <Download size={18} />
+                    Save PDF
+                  </Button>
+                </div>
+              </div>
+
+              {/* Mobile Signature Editor Modal */}
+              <Modal isOpen={isOpenMobileEdit} onOpenChange={onOpenChangeMobileEdit} placement="bottom" size="full">
+                <ModalContent>
+                  {(onClose) => (
+                    <>
+                      <ModalHeader className="flex flex-col gap-1">
+                        <h3 className="text-lg font-semibold">Edit Signature</h3>
+                        {signatureImageSelect && <p className="text-sm text-gray-500">{signatureImageSelect.name}</p>}
+                      </ModalHeader>
+                      <ModalBody>
+                        {signatureImageSelect && (
+                          <div className="space-y-4">
+                            {/* Position Controls */}
+                            <div>
+                              <p className="text-sm font-medium mb-2 dark:text-white">Position</p>
+                              <div className="grid grid-cols-3 gap-2">
+                                <div></div>
+                                <Button size="sm" onClick={() => moveSignature('up')} variant="flat">
+                                  ↑
+                                </Button>
+                                <div></div>
+                                <Button size="sm" onClick={() => moveSignature('left')} variant="flat">
+                                  ←
+                                </Button>
+                                <div></div>
+                                <Button size="sm" onClick={() => moveSignature('right')} variant="flat">
+                                  →
+                                </Button>
+                                <div></div>
+                                <Button size="sm" onClick={() => moveSignature('down')} variant="flat">
+                                  ↓
+                                </Button>
+                                <div></div>
+                              </div>
+                            </div>
+
+                            {/* Size Controls */}
+                            <div>
+                              <p className="text-sm font-medium mb-2 dark:text-white">Size</p>
+                              <div className="flex gap-2">
+                                <Button size="sm" onClick={() => resizeSignature('decrease')} variant="flat" className="flex-1">
+                                  Smaller
+                                </Button>
+                                <Button size="sm" onClick={() => resizeSignature('increase')} variant="flat" className="flex-1">
+                                  Larger
+                                </Button>
+                              </div>
+                            </div>
+
+                            {/* Delete Button */}
+                            <Button
+                              size="md"
+                              color="danger"
+                              variant="flat"
+                              className="w-full"
+                              onClick={() => {
+                                if (signatureImageSelect) {
+                                  handleDeleteSignature(signatureImageSelect);
+                                  onClose();
+                                }
+                              }}
+                              startContent={<Trash2 size={18} />}
+                            >
+                              Delete Signature
+                            </Button>
+                          </div>
+                        )}
+                      </ModalBody>
+                      <ModalFooter>
+                        <Button color="primary" variant="solid" onClick={onClose} className="w-full">
+                          Done
+                        </Button>
+                      </ModalFooter>
+                    </>
+                  )}
+                </ModalContent>
+              </Modal>
             </div>
-          </div>
-          <div className="grow-0 w-[400px] h-screen max-h-screen overflow-y-auto">
-            <SidebarEditor
-              signatureImageSelect={signatureImageSelect}
-              sizeSignature={sizeSignature}
-              numPages={numPages}
-              pageNumber={pageNumber}
-              signatureImages={signatureImages}
-              handleDuplicatToAllPage={handleDuplicatToAllPage}
-              handleDeleteSignature={handleDeleteSignature}
-              setSignatureImageSelect={setSignatureImageSelect}
-              handleSyncSelectSignature={handleSyncSelectSignature}
-              handleMovePage={handleMovePage}
-              handleSelectSignature={handleSelectSignature}
-              handleDuplicteToCurrentPage={handleDuplicteToCurrentPage}
-            />
-          </div>
-        </div>
+          ) : (
+            /* Desktop View */
+            <div className="flex h-screen">
+              <div className="grow">
+                <div className="h-screen overflow-y-auto">
+                  <div className="sticky top-0 z-50 p-4 bg-white dark:bg-dark-gray">
+                    <div className="flex w-full justify-between">
+                      <div className="space-x-2">
+                        <Button onClick={onOpenSE} isDisabled={!file} color="primary">
+                          Add Signature
+                        </Button>
+                        <Button onClick={addSignaturesToPdf} isDisabled={!file} color="primary" variant="solid">
+                          Save
+                        </Button>
+                      </div>
+                      <div className="space-x-2">
+                        <Button color="danger" isIconOnly variant="faded" onClick={handleDeleteFile}>
+                          <FileX />
+                        </Button>
+                        <ButtonNigtmode />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="dark:bg-dark-black bg-gray-200 text-white px-2 pt-2 pb-4 space-y-2">
+                    <div className="w-full flex items-center justify-between">
+                      <div>
+                        <Button onClick={goToPrevPage} isDisabled={pageNumber <= 1 || !file} color="primary" size="sm">
+                          Prev
+                        </Button>
+                      </div>
+                      <div className="text-primary">
+                        {pageNumber} / {numPages}
+                      </div>
+                      <div>
+                        <Button onClick={goToNextPage} isDisabled={pageNumber >= (numPages || 0) || !file} color="primary" size="sm">
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="w-full flex justify-center">
+                      <div className="min-h-screen w-fit drop-area">
+                        <DndProvider backend={HTML5Backend}>
+                          <DropArea onDrop={handleDrop}>
+                            {file && (
+                              <div className="relative w-full h-full">
+                                {error ? (
+                                  <div className="text-red-500">{`Error loading PDF: ${error}`}</div>
+                                ) : (
+                                  <Document file={pdfData} onLoadSuccess={onDocumentLoadSuccess} onLoadError={onDocumentLoadError}>
+                                    <Page pageNumber={pageNumber} />
+                                  </Document>
+                                )}
+                                {signatureImages.map((signature, index) => {
+                                  if (signature.page !== pageNumber) return null;
+                                  return (
+                                    <DraggableSignature
+                                      key={index}
+                                      isSelected={signatureImageSelect?.id == signature?.id}
+                                      src={signature.src}
+                                      position={{ x: signature.x, y: signature.y }}
+                                      index={index}
+                                      onDrop={handleDrop}
+                                      onClick={() => setSignatureImageSelect(signature)}
+                                      width={signature.width}
+                                      height={signature.height}
+                                    />
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </DropArea>
+                        </DndProvider>
+                      </div>
+                    </div>
+                    <div className="w-full flex items-center justify-between">
+                      <div>
+                        <Button onClick={goToPrevPage} isDisabled={pageNumber <= 1 || !file} color="primary" size="sm">
+                          Prev
+                        </Button>
+                      </div>
+                      <div className="text-primary">
+                        {pageNumber} / {numPages}
+                      </div>
+                      <div>
+                        <Button onClick={goToNextPage} isDisabled={pageNumber >= (numPages || 0) || !file} color="primary" size="sm">
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="grow-0 w-[400px] h-screen max-h-screen overflow-y-auto">
+                <SidebarEditor
+                  signatureImageSelect={signatureImageSelect}
+                  sizeSignature={sizeSignature}
+                  numPages={numPages}
+                  pageNumber={pageNumber}
+                  signatureImages={signatureImages}
+                  handleDuplicatToAllPage={handleDuplicatToAllPage}
+                  handleDeleteSignature={handleDeleteSignature}
+                  setSignatureImageSelect={setSignatureImageSelect}
+                  handleSyncSelectSignature={handleSyncSelectSignature}
+                  handleMovePage={handleMovePage}
+                  handleSelectSignature={handleSelectSignature}
+                  handleDuplicteToCurrentPage={handleDuplicteToCurrentPage}
+                />
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
