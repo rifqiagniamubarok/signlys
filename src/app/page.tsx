@@ -4,6 +4,7 @@ import ButtonNigtmode from '@/components/partial/ButtonNigtmode';
 import { Button } from '@nextui-org/react';
 import { ArrowRight, Check, FileSignature, Github, Layers, Lock, Sparkles, Upload, Zap } from 'lucide-react';
 import Link from 'next/link';
+import packageJson from '../../package.json';
 
 export default function Home() {
   return (
@@ -185,6 +186,7 @@ export default function Home() {
             <div className="flex items-center gap-2">
               <FileSignature className="w-6 h-6 text-primary-light dark:text-primary-dark" />
               <span className="font-bold text-gray-900 dark:text-white">Signlys</span>
+              <span className="text-xs px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded-full text-gray-600 dark:text-gray-400">v{packageJson.version}</span>
             </div>
             <p className="text-sm text-gray-600 dark:text-gray-400">© {new Date().getFullYear()} Signlys. Open source PDF signature tool.</p>
             <div className="flex gap-4">
