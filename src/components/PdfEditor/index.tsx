@@ -46,7 +46,7 @@ interface DropAreaProps {
 const DropArea: React.FC<DropAreaProps> = ({ children, onDrop }) => {
   const [{ canDrop, isOver }, drop] = useDrop({
     accept: ItemTypes.SIGNATURE,
-    drop: (item: { index: number }, monitor) => {
+    drop: (item: { index: number; width: number; height: number }, monitor) => {
       const offset = monitor.getClientOffset();
       if (offset) {
         onDrop(item.index, offset);
@@ -152,8 +152,13 @@ const PdfEditor: React.FC = () => {
     const dropAreaRect = dropArea?.getBoundingClientRect();
     if (!dropAreaRect) return;
 
-    const x = offset.x - dropAreaRect.left;
-    const y = offset.y - dropAreaRect.top;
+    // Get the signature being dragged to account for its dimensions
+    const draggedSignature = signatureImages[index];
+    if (!draggedSignature) return;
+
+    // Calculate position accounting for signature dimensions (center the signature on cursor)
+    const x = Math.max(0, offset.x - dropAreaRect.left - draggedSignature.width / 2);
+    const y = Math.max(0, offset.y - dropAreaRect.top - draggedSignature.height / 2);
 
     setSignatureImages((prevSignatures) => prevSignatures.map((signature, i) => (i === index ? { ...signature, x, y, page: pageNumber } : signature)));
   };

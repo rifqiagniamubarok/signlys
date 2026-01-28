@@ -26,7 +26,11 @@ const DraggableSignature: React.FC<DraggableSignatureProps> = ({ src, position, 
 
   const [{ isDragging }, drag] = useDrag({
     type: ItemTypes.SIGNATURE,
-    item: { index },
+    item: () => ({
+      index,
+      width,
+      height,
+    }),
     collect: (monitor) => ({
       isDragging: monitor.isDragging(),
     }),
@@ -37,7 +41,7 @@ const DraggableSignature: React.FC<DraggableSignatureProps> = ({ src, position, 
     drag(ref);
   }, [drag]);
 
-  const handleResizeStart = useCallback( 
+  const handleResizeStart = useCallback(
     (e: React.MouseEvent | React.TouchEvent) => {
       e.stopPropagation();
       e.preventDefault();
@@ -109,9 +113,12 @@ const DraggableSignature: React.FC<DraggableSignatureProps> = ({ src, position, 
         top: position.y,
         width,
         height,
-        opacity: isDragging ? 0.5 : 1,
-        cursor: isResizing ? 'nw-resize' : 'move',
+        opacity: isDragging ? 0.7 : 1,
+        cursor: isResizing ? 'nw-resize' : isDragging ? 'grabbing' : 'grab',
         userSelect: 'none',
+        transform: isDragging ? 'rotate(2deg) scale(1.02)' : 'none',
+        transition: isDragging ? 'none' : 'transform 0.1s ease',
+        zIndex: isDragging ? 1000 : isSelected ? 10 : 1,
       }}
       className={classNames('group', isSelected && 'ring-2 ring-blue-500 ring-opacity-75', 'hover:ring-2 hover:ring-blue-400 hover:ring-opacity-50')}
       onClick={onClick}
