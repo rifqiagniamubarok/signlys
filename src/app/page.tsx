@@ -47,7 +47,7 @@ export default function Home() {
 
             {/* Subtitle */}
             <p className="text-xl md:text-2xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto">
-              Add digital signatures to your PDF documents in seconds. Draw, upload, or type your signature - it's that simple.
+              Add digital signatures to your PDF documents in seconds. Draw, upload, or type your signature - it&apos;s that simple.
             </p>
 
             {/* CTA Buttons */}
@@ -171,7 +171,7 @@ export default function Home() {
                 className="bg-secondary-light dark:bg-secondary-dark text-white font-semibold px-10 hover:opacity-90 transition-opacity"
                 endContent={<ArrowRight size={20} />}
               >
-                Try It Now - It's Free!
+                Try It Now - It&apos;s Free!
               </Button>
             </Link>
           </div>

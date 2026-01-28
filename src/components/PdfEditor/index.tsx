@@ -1,20 +1,21 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 import { PDFDocument } from 'pdf-lib';
 import { saveAs } from 'file-saver';
-import { Button, Card, Divider, Spinner, useDisclosure, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter } from '@nextui-org/react';
+import { Button, Spinner, useDisclosure, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter } from '@nextui-org/react';
 import DraggableSignature from './DraggableSignature';
+import MobileSignature from './MobileSignature';
 import SidebarEditor from './SidebarEditor';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { useDrop } from 'react-dnd';
 import SignModal from './SignModal';
 import DropFile from './DropFile';
-import { ArrowBigLeft, ArrowLeft, ChevronLeft, ChevronRight, Download, FileX, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Download, FileX, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import ButtonNigtmode from '../partial/ButtonNigtmode';
 import dayjs from 'dayjs';
@@ -75,7 +76,7 @@ const DropArea: React.FC<DropAreaProps> = ({ children, onDrop }) => {
 
 const PdfEditor: React.FC = () => {
   const { isOpen: isOpenSE, onOpen: onOpenSE, onOpenChange: onOpenChangeSE, onClose: onCloseSE } = useDisclosure();
-  const { isOpen: isOpenMobileEdit, onOpen: onOpenMobileEdit, onOpenChange: onOpenChangeMobileEdit, onClose: onCloseMobileEdit } = useDisclosure();
+  const { isOpen: isOpenMobileEdit, onOpen: onOpenMobileEdit, onOpenChange: onOpenChangeMobileEdit } = useDisclosure();
   const [signatureImages, setSignatureImages] = useState<Signature[]>([]);
   const [signatureImageSelect, setSignatureImageSelect] = useState<Signature | null>(null);
   const [numPages, setNumPages] = useState<number | null>(null);
@@ -186,7 +187,7 @@ const PdfEditor: React.FC = () => {
 
         const pages = pdfDoc.getPages();
         const page = pages[signature.page - 1];
-        const { width, height } = page.getSize();
+        const { height } = page.getSize();
 
         page.drawImage(image, {
           x: signature.x,
@@ -233,6 +234,10 @@ const PdfEditor: React.FC = () => {
     setSignatureImages([...filteredSignature, signature]);
   };
 
+  const handleResize = (index: number, newWidth: number, newHeight: number) => {
+    setSignatureImages((prevSignatures) => prevSignatures.map((signature, i) => (i === index ? { ...signature, width: newWidth, height: newHeight } : signature)));
+  };
+
   const handleDuplicatToAllPage = (signature: Signature) => {
     const newSignatures = [...signatureImages];
     for (let i = 1; i <= (numPages || 0); i++) {
@@ -275,7 +280,7 @@ const PdfEditor: React.FC = () => {
           return updated;
         }
         return sig;
-      })
+      }),
     );
   };
 
@@ -294,7 +299,7 @@ const PdfEditor: React.FC = () => {
           return updated;
         }
         return sig;
-      })
+      }),
     );
   };
 
@@ -378,32 +383,17 @@ const PdfEditor: React.FC = () => {
                     {signatureImages
                       .filter((sig) => sig.page === pageNumber)
                       .map((signature) => (
-                        <div
+                        <MobileSignature
                           key={signature.id}
-                          onClick={(e) => handleSignatureClick(signature, e)}
-                          style={{
-                            position: 'absolute',
-                            left: signature.x,
-                            top: signature.y,
-                            width: signature.width,
-                            height: signature.height,
-                            cursor: 'pointer',
-                            border: signatureImageSelect?.id === signature.id ? '2px solid #0070f0' : '1px dashed #999',
-                            borderRadius: '4px',
-                            backgroundColor: signatureImageSelect?.id === signature.id ? 'rgba(0, 112, 240, 0.1)' : 'transparent',
+                          signature={signature}
+                          index={signatureImages.indexOf(signature)}
+                          isSelected={signatureImageSelect?.id === signature.id}
+                          onSelect={(sig) => handleSignatureClick(sig, {} as React.MouseEvent<HTMLDivElement>)}
+                          onResize={handleResize}
+                          onMove={(index, newX, newY) => {
+                            setSignatureImages((prev) => prev.map((sig, i) => (i === index ? { ...sig, x: newX, y: newY } : sig)));
                           }}
-                        >
-                          <img
-                            src={signature.src}
-                            alt={signature.name}
-                            style={{
-                              width: '100%',
-                              height: '100%',
-                              objectFit: 'contain',
-                              pointerEvents: 'none',
-                            }}
-                          />
-                        </div>
+                        />
                       ))}
                   </div>
                 </div>
@@ -451,9 +441,16 @@ const PdfEditor: React.FC = () => {
                       <ModalBody>
                         {signatureImageSelect && (
                           <div className="space-y-4">
+                            {/* Instruction */}
+                            <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
+                              <p className="text-xs text-blue-600 dark:text-blue-400">
+                                💡 <strong>Tip:</strong> You can drag the signature to move it, or use the blue handles on the signature to resize it directly on the PDF!
+                              </p>
+                            </div>
+
                             {/* Position Controls */}
                             <div>
-                              <p className="text-sm font-medium mb-2 dark:text-white">Position</p>
+                              <p className="text-sm font-medium mb-2 dark:text-white">Fine Position Adjustment</p>
                               <div className="grid grid-cols-3 gap-2">
                                 <div></div>
                                 <Button size="sm" onClick={() => moveSignature('up')} variant="flat">
@@ -477,7 +474,7 @@ const PdfEditor: React.FC = () => {
 
                             {/* Size Controls */}
                             <div>
-                              <p className="text-sm font-medium mb-2 dark:text-white">Size</p>
+                              <p className="text-sm font-medium mb-2 dark:text-white">Fine Size Adjustment</p>
                               <div className="flex gap-2">
                                 <Button size="sm" onClick={() => resizeSignature('decrease')} variant="flat" className="flex-1">
                                   Smaller
@@ -579,6 +576,7 @@ const PdfEditor: React.FC = () => {
                                       position={{ x: signature.x, y: signature.y }}
                                       index={index}
                                       onDrop={handleDrop}
+                                      onResize={handleResize}
                                       onClick={() => setSignatureImageSelect(signature)}
                                       width={signature.width}
                                       height={signature.height}
